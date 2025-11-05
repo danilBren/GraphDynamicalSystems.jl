@@ -265,7 +265,9 @@ end
 Entity(name::Symbol, args...) = Entity(EntityName(name), args...)
 Entity(id::Int, args...) = Entity(EntityId(id), args...)
 Entity((id, name), args...) = Entity(EntityIdName(id, name), args...)
+
 Base.show(io::Core.IO, e::Entity) = print(io, "(|$(e.label), $(e.target_function), $(e.domain)|)")
+Base.isless(E1::Entity, E2::Entity) = E1.label < E2.label
 
 label(e::Entity) = e.label
 id(e::Entity) = id(label(e))
@@ -515,21 +517,21 @@ end
 Interpret target functions from a [`QualitativeNetwork`](@ref).
 """
 function interpret(e::Union{Expr,EntityName{Symbol}, Symbol,Int}, qn::QN, target)
-    function scale_with_domain(source, target, val)
+    function scale_with_domain(source::EntityName, target::Union{EntityName, Entity}, val::Integer)
         (source_min, source_max) = extrema(get_domain(qn, source))
         (target_min, target_max) = extrema(get_domain(qn, target))
         if (source_max == source_min)
             return source_mi
         else
-            return(Integer(
+            return(Integer(round(
                 (val - source_min)*(
                 (target_max-target_min)/(source_max-source_min)
                 )+ target_min
-                ))
+                )))
         end
     end
     @match e begin
-        ::Symbol => scale_with_domain(e, target, get_state(qn, EntityName(e)))
+        ::Symbol => scale_with_domain(EntityName(e), target, get_state(qn, EntityName(e)))
         ::EntityName{Symbol} => scale_with_domain(e, target, get_state(qn, e))
         ::Int => e
         :($v1 + $v2) => interpret(v1, qn, target) + interpret(v2, qn, target)
