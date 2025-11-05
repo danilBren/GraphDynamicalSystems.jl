@@ -265,6 +265,7 @@ end
 Entity(name::Symbol, args...) = Entity(EntityName(name), args...)
 Entity(id::Int, args...) = Entity(EntityId(id), args...)
 Entity((id, name), args...) = Entity(EntityIdName(id, name), args...)
+Base.show(io::Core.IO, e::Entity) = print(io, "(|$(e.label), $(e.target_function), $(e.domain)|)")
 
 label(e::Entity) = e.label
 id(e::Entity) = id(label(e))
@@ -420,7 +421,7 @@ const QN = QualitativeNetwork
 
 Get all entities of the QN.
 """
-function get_all_entities(qn::QN)
+function get_entities(qn::QN)
     return [v[2] for v in (values(qn.graph.vertex_properties))]
 end
 
@@ -429,11 +430,15 @@ end
 
 Get the domain of the entity `entity_label` in `qn`.
 """
-function get_domain(qn::QN, entity_label)
+function get_domain(qn::QN, entity_label::EntityName)
     graph = get_graph(qn)
     entity = graph[entity_label]
 
     return domain(entity)
+end
+
+function get_domain(qn::QN, entity::Entity)
+    return get_domain(qn, entity.label)
 end
 
 """
@@ -442,33 +447,18 @@ end
 Get all of the domains of the entities in `qn`.
 """
 function get_domain(qn::QN)
-    return get_domain.((qn,), labels(get_graph(qn)))
+    return get_domain.((qn,), entities_names(qn))
 end
 
-function _get_entity_index(qn::QN, entity)
-    # Ugly, we shouldn't pass entities around as Symbols anymore
-    # but this works for now
-    # actually, doesn't because there are sometimes variables with underscores... time to rewrite more
-    entity_proc = if entity isa EntityName
-        split_res = rsplit(String(name(entity)), "_"; limit = 2)
-        entity_proc = if length(split_res) == 2
-            (entity_str, id_str) = split_res
-            id_val = tryparse(Int, id_str)
-            if !isnothing(id_val)
-                EntityIdName(id_val, entity_str)
-            else
-                entity
-            end
-        else
-            entity
-        end
-    else
-        entity
+function _get_entity_index(qn::QN, entity::Union{Entity, EntityName})
+    i = if entity isa EntityName
+        findfirst(==(entity), label.(get_entities(qn)))
+    elseif entity isa Entity
+        findfirst(==(entity), get_entities(qn))
     end
-    i = findfirst(isequal(entity_proc), entities(qn))
     if isnothing(i)
-        error("""Tried to get the state of $entity_proc but could not retrieve it. \
-              The entities in the model are $(entities(qn))""")
+        error("""Tried to get the state of $entity but could not retrieve it. \
+              The entities in the model are $(get_entities(qn))""")
     end
     return i
 end
@@ -485,10 +475,16 @@ end
 """
     $(TYPEDSIGNATURES)
 """
-function get_state(qn::QN, entity)
+function get_state(qn::QN, entity::Entity)
     i = _get_entity_index(qn, entity)
     return qn.state[i]
 end
+
+function get_state(qn::QN, entity_name::EntityName)
+    i = _get_entity_index(qn, entity_name)
+    return qn.state[i]
+end 
+
 
 function _set_state!(qn::QN, entity, value::Integer)
     i = _get_entity_index(qn::QN, entity)
@@ -498,8 +494,8 @@ end
 """
     $(TYPEDSIGNATURES)
 """
-function set_state!(qn::QN, entity, value::Integer)
-    max_for_entity = maximum(get_domain(qn, entity))
+function set_state!(qn::QN, entity::Entity, value::Integer)
+    max_for_entity = maximum(domain(entity))
     if value > max_for_entity
         error(
             "Value ($value) cannot be larger than the maximum level for $entity ($(max_for_entity))",
@@ -509,12 +505,8 @@ function set_state!(qn::QN, entity, value::Integer)
     _set_state!(qn, entity, value)
 end
 
-function set_state!(qn::QN, entity::Symbol, value::Integer)
-    set_state!(qn, EntityName(entity), value)
-end
-
 function set_state!(qn::QN, values)
-    set_state!.((qn,), entities(qn), values)
+    set_state!.((qn,), get_entities(qn), values)
 end
 
 """
@@ -522,22 +514,35 @@ end
 
 Interpret target functions from a [`QualitativeNetwork`](@ref).
 """
-function interpret(e::Union{Expr,EntityName{Symbol}, Symbol,Int}, qn::QN)
+function interpret(e::Union{Expr,EntityName{Symbol}, Symbol,Int}, qn::QN, target)
+    function scale_with_domain(source, target, val)
+        (source_min, source_max) = extrema(get_domain(qn, source))
+        (target_min, target_max) = extrema(get_domain(qn, target))
+        if (source_max == source_min)
+            return source_mi
+        else
+            return(Integer(
+                (val - source_min)*(
+                (target_max-target_min)/(source_max-source_min)
+                )+ target_min
+                ))
+        end
+    end
     @match e begin
-        ::Symbol => get_state(qn, EntityName(e))
-        ::EntityName{Symbol} => get_state(qn, e)
+        ::Symbol => scale_with_domain(e, target, get_state(qn, EntityName(e)))
+        ::EntityName{Symbol} => scale_with_domain(e, target, get_state(qn, e))
         ::Int => e
-        :($v1 + $v2) => interpret(v1, qn) + interpret(v2, qn)
-        :($v1 - $v2) => interpret(v1, qn) - interpret(v2, qn)
-        :($v1 / $v2) => interpret(v1, qn) / interpret(v2, qn)
+        :($v1 + $v2) => interpret(v1, qn, target) + interpret(v2, qn, target)
+        :($v1 - $v2) => interpret(v1, qn, target) - interpret(v2, qn, target)
+        :($v1 / $v2) => interpret(v1, qn, target) / interpret(v2, qn, target)
         :($v1 * $v2) => begin
-            r1, r2 = interpret(v1, qn), interpret(v2, qn)
+            r1, r2 = interpret(v1, qn, target), interpret(v2, qn, target)
             r1 < 0 && r2 < 0 ? 0 : r1*r2
         end
-        :(min($v1, $v2)) => min(interpret(v1, qn), interpret(v2, qn))
-        :(max($v1, $v2)) => max(interpret(v1, qn), interpret(v2, qn))
-        :(ceil($v)) => ceil(interpret(v, qn))
-        :(floor($v)) => floor(interpret(v, qn))
+        :(min($v1, $v2)) => min(interpret(v1, qn, taget), interpret(v2, qn, target))
+        :(max($v1, $v2)) => max(interpret(v1, qn, taget), interpret(v2, qn, target))
+        :(ceil($v)) => ceil(interpret(v, qn, target))
+        :(floor($v)) => floor(interpret(v, qn, target))
         _ => error("Unhandled Expr in `interpret`: $e")
     end
 end
@@ -580,21 +585,25 @@ function limit_change(entity::Entity, prev_value::Integer, next_value::Integer):
     
 end
 
-function _compute_next_state!(qn::QN, entity)
+function _compute_next_state!(qn::QN, entity::EntityName)
     (min_level, max_level) = extrema(get_domain(qn, entity))
     t = target_functions(qn)[entity]
     old_state = get_state(qn, entity)
-    new_state = interpret(t, qn)
+    new_state = interpret(t, qn, entity)
     new_state = isnan(new_state) ? min_level : new_state
     new_state = isinf(new_state) ? max_level : new_state
     limited_state = limit_change(old_state, floor(Int, new_state), min_level, max_level)
+end
+
+function _compute_next_state!(qn::QN, entity::Entity)
+    _compute_next_state!(qn, entity.label)
 end
 
 """
     $(TYPEDSIGNATURES)
 """
 function async_qn_step!(qn::QN)
-    entity_labels = entities(qn)
+    entity_labels = get_entities(qn)
     entity = rand(entity_labels)
     next_state = _compute_next_state!(qn, entity)
     set_state!(qn, entity, next_state)
@@ -604,8 +613,8 @@ end
     $(TYPEDSIGNATURES)
 """
 function sync_qn_step!(qn::QN)
-    next_states = _compute_next_state!.((qn,), entities(qn))
-    set_state!.((qn,), entities(qn), next_states)
+    next_states = _compute_next_state!.((qn,), get_entities(qn))
+    set_state!.((qn,), get_entities(qn), next_states)
 end
 
 extract_state(model::QN) = model.state

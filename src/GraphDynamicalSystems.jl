@@ -30,5 +30,6 @@ export QualitativeNetwork,
     current_parameters
 
 include("io/bma.jl")
+export BMA
 
 end

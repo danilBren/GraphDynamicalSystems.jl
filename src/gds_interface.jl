@@ -40,7 +40,7 @@ end
 
 List all entities in `gds`.
 """
-function entities(gds::GDS)
+function entities_names(gds::GDS)
     return collect(labels(get_graph(gds)))
 end
 
