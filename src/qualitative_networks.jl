@@ -225,6 +225,11 @@ struct EntityName{S} <: EntityLabel
 end
 name(e::EntityName) = e.name
 
+Base.:(==)(A::EntityName, B::EntityName) = A.name == B.name
+Base.isless(A::EntityName, B::EntityName) = A.name < B.name
+convert(::Type{EntityName{Symbol}}, S::Symbol) = EntityName(S)
+convert(::Type{Symbol}, S::EntityName{Symbol}) = S.name
+Base.show(io::IO, E::EntityName{Symbol}) = print(io, E.name)
 @auto_hash_equals struct EntityIdName{S} <: EntityLabel
     id::Int
     name::S
@@ -281,7 +286,7 @@ end
     $(TYPEDSIGNATURES)
 """
 function update_functions_to_interaction_graph(
-    entities_in_model::AbstractVector{<:E},
+    entities_in_model::AbstractVector{<:E};
     schedule = Synchronous,
 ) where {EntityLabelType,E<:Entity{EntityLabelType}}
     graph = MetaGraph(
@@ -329,7 +334,7 @@ end
     $(TYPEDSIGNATURES)
 """
 function sample_qualitative_network(
-    entities::AbstractVector{Symbol},
+    entities::AbstractVector{Entity},
     domains::AbstractVector{UnitRange{Int}},
     max_eq_depth::Int;
     schedule = Synchronous,
@@ -345,7 +350,7 @@ function sample_qualitative_network(
 end
 
 sample_qualitative_network(N::Int, args...; kwargs...) =
-    sample_qualitative_network(Symbol.(('A':'Z')[1:N]), args...; kwargs...)
+    sample_qualitative_network(Entity.(Symbol.(('A':'Z')[1:N])), args...; kwargs...)
 
 """
     $(TYPEDEF)
@@ -368,6 +373,7 @@ struct QualitativeNetwork{
     N,
     Schedule,
     M<:MetaGraph{Int,<:SimpleDiGraph,<:EntityLabel,<:Entity},
+    
 } <: GraphDynamicalSystem{N,Schedule}
     "Graph containing the topology and target functions of the network"
     graph::M
@@ -390,7 +396,7 @@ function QualitativeNetwork(
     state = nothing,
     schedule = Synchronous,
 )
-    graph = update_functions_to_interaction_graph(entities, schedule)
+    graph = update_functions_to_interaction_graph(entities; schedule)
 
     if isnothing(state)
         state = rand.(domain.(entities))
@@ -400,7 +406,7 @@ function QualitativeNetwork(
 end
 
 QualitativeNetwork(entities::AbstractVector{<:AbstractString}, args...; kwargs...) =
-    QualitativeNetwork(Symbol.(entities), args...; kwargs...)
+    QualitativeNetwork(EntityName.(Symbol.(entities)), args...; kwargs...)
 
 """
     $(TYPEDSIGNATURES)
@@ -408,6 +414,15 @@ QualitativeNetwork(entities::AbstractVector{<:AbstractString}, args...; kwargs..
 Shorthand for [`QualitativeNetwork`](@ref).
 """
 const QN = QualitativeNetwork
+
+"""
+    $(TYPEDSIGNATURES)
+
+Get all entities of the QN.
+"""
+function get_all_entities(qn::QN)
+    return [v[2] for v in (values(qn.graph.vertex_properties))]
+end
 
 """
     $(TYPEDSIGNATURES)
@@ -474,7 +489,6 @@ function get_state(qn::QN, entity)
     i = _get_entity_index(qn, entity)
     return qn.state[i]
 end
-get_state(qn::QN, entity::Symbol) = get_state(qn, EntityName(entity))
 
 function _set_state!(qn::QN, entity, value::Integer)
     i = _get_entity_index(qn::QN, entity)
@@ -508,14 +522,18 @@ end
 
 Interpret target functions from a [`QualitativeNetwork`](@ref).
 """
-function interpret(e::Union{Expr,Symbol,Int}, qn::QN)
+function interpret(e::Union{Expr,EntityName{Symbol}, Symbol,Int}, qn::QN)
     @match e begin
-        ::Symbol => get_state(qn, e)
+        ::Symbol => get_state(qn, EntityName(e))
+        ::EntityName{Symbol} => get_state(qn, e)
         ::Int => e
         :($v1 + $v2) => interpret(v1, qn) + interpret(v2, qn)
         :($v1 - $v2) => interpret(v1, qn) - interpret(v2, qn)
         :($v1 / $v2) => interpret(v1, qn) / interpret(v2, qn)
-        :($v1 * $v2) => interpret(v1, qn) * interpret(v2, qn)
+        :($v1 * $v2) => begin
+            r1, r2 = interpret(v1, qn), interpret(v2, qn)
+            r1 < 0 && r2 < 0 ? 0 : r1*r2
+        end
         :(min($v1, $v2)) => min(interpret(v1, qn), interpret(v2, qn))
         :(max($v1, $v2)) => max(interpret(v1, qn), interpret(v2, qn))
         :(ceil($v)) => ceil(interpret(v, qn))
@@ -523,6 +541,7 @@ function interpret(e::Union{Expr,Symbol,Int}, qn::QN)
         _ => error("Unhandled Expr in `interpret`: $e")
     end
 end
+
 
 """
     $(TYPEDSIGNATURES)
@@ -546,6 +565,19 @@ function limit_change(
     end
 
     return limited_value
+end
+
+"""
+    $(TYPEDSIGNATURES)
+
+Returns the limited value of `next_value` which is at most 1 different than `prev_value`.
+
+It is also never negative, or larger than `N`.
+"""
+function limit_change(entity::Entity, prev_value::Integer, next_value::Integer)::Integer
+    min_level, max_level = range_from(entity), range_to(entity)
+    return limit_change(prev_value, next_value, min_level, max_level)
+    
 end
 
 function _compute_next_state!(qn::QN, entity)
@@ -609,4 +641,57 @@ function create_qn_system(qn::QN)
         reset_model!,
         isdeterministic = get_schedule(qn) == Synchronous(),
     )
+end
+
+
+"""
+    $(TYPEDSIGNATURES)
+
+Given a functoin, classify entities in the function into activators and inhibitors.
+"""
+function classify_activators_inhibitors(
+    ex,
+    sign::Int = 1,
+    activators::AbstractVector = EntityName{Symbol}[],
+    inhibitors::AbstractVector = EntityName{Symbol}[],
+)
+    (activators, inhibitors) = @match ex begin
+        ::EntityName{Symbol} => if sign == 1
+            (push!(activators, ex), inhibitors)
+        else
+            (activators, push!(inhibitors, ex))
+        end
+        ::Int => (activators, inhibitors)
+        Expr(:call, :(-), child) =>
+            classify_activators_inhibitors(child, -sign, activators, inhibitors)
+        Expr(:call, :(-), left_child, right_child) => begin
+            (activators, inhibitors) = classify_activators_inhibitors(
+                left_child,
+                sign,
+                activators,
+                inhibitors,
+            )
+            (activators, inhibitors) = classify_activators_inhibitors(
+                right_child,
+                -sign,
+                activators,
+                inhibitors,
+            )
+            (activators, inhibitors)
+        end
+        Expr(:call, f, children...) => begin
+            for child in children
+                (activators, inhibitors) = classify_activators_inhibitors(
+                    child,
+                    sign,
+                    activators,
+                    inhibitors,
+                )
+            end
+            (activators, inhibitors)
+        end
+        Expr(expr_type, _...) => error("Can't classify expression of type $expr_type")
+    end
+
+    return activators, inhibitors
 end
