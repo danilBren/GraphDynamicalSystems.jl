@@ -1,6 +1,5 @@
 import AutoHashEquals: @auto_hash_equals
 import DynamicalSystemsBase: current_parameters, get_state, set_state!
-import JSON
 import SciMLBase
 
 using AbstractTrees: Leaves, PostOrderDFS
