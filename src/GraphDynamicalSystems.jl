@@ -9,7 +9,7 @@ export GraphDynamicalSystem,
     Asynchronous,
     Synchronous,
     get_n_entities,
-    entities,
+    get_entities_names,
     get_schedule,
     get_state,
     get_graph
@@ -30,6 +30,5 @@ export QualitativeNetwork,
     current_parameters
 
 include("io/bma.jl")
-export BMA
 
 end

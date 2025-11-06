@@ -10,7 +10,7 @@ import GraphDynamicalSystems:
     Synchronous,
     default_target_function,
     domain,
-    entities,
+    get_entities_names,
     get_domain,
     get_graph,
     id,

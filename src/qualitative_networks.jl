@@ -449,14 +449,14 @@ end
 Get all of the domains of the entities in `qn`.
 """
 function get_domain(qn::QN)
-    return get_domain.((qn,), entities_names(qn))
+    return get_domain.((qn,), get_entity_names(qn))
 end
 
-function _get_entity_index(qn::QN, entity::Union{Entity, EntityName})
-    i = if entity isa EntityName
-        findfirst(==(entity), label.(get_entities(qn)))
+function _get_entity_index(qn::QN, entity::Union{Entity, EntityLabel})
+    i = if entity isa EntityLabel
+        findfirst(==(entity), get_entity_names(qn))
     elseif entity isa Entity
-        findfirst(==(entity), get_entities(qn))
+        findfirst(==(entity.label), get_entity_names(qn))
     end
     if isnothing(i)
         error("""Tried to get the state of $entity but could not retrieve it. \
@@ -505,6 +505,10 @@ function set_state!(qn::QN, entity::Entity, value::Integer)
     end
 
     _set_state!(qn, entity, value)
+end
+
+function set_state!(qn::QN, entity_name::EntityName, value::Integer)
+    set_state!(qn, qn.graph[entity_name], value)
 end
 
 function set_state!(qn::QN, values)
