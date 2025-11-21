@@ -256,7 +256,7 @@ id(e::EntityIdName) = e.id
 name(e::EntityIdName) = e.name
 combined_name(e::EntityIdName) = Symbol("$(name(e))_$(id(e))")
 
-struct Entity{I<:EntityLabel,D}
+mutable struct Entity{I<:EntityLabel,D}
     label::I
     target_function::Any
     domain::UnitRange{D}
@@ -423,7 +423,7 @@ const QN = QualitativeNetwork
 Get all entities of the QN.
 """
 function get_entities(qn::QN)
-    return [v[2] for v in (values(qn.graph.vertex_properties))]
+    return [qn.graph[e] for e in  get_entity_names(qn)]
 end
 
 """
@@ -562,7 +562,7 @@ It is also never negative, or larger than `N`.
 """
 function limit_change(
     prev_value::Integer,
-    next_value::Integer,
+    next_value::Number,
     min_level::Integer,
     max_level::Integer,
 )
@@ -584,7 +584,7 @@ Returns the limited value of `next_value` which is at most 1 different than `pre
 
 It is also never negative, or larger than `N`.
 """
-function limit_change(entity::Entity, prev_value::Integer, next_value::Integer)::Integer
+function limit_change(entity::Entity, prev_value::Integer, next_value::Number)::Integer
     min_level, max_level = range_from(entity), range_to(entity)
     return limit_change(prev_value, next_value, min_level, max_level)
     
@@ -620,6 +620,24 @@ end
 function sync_qn_step!(qn::QN)
     next_states = _compute_next_state!.((qn,), get_entities(qn))
     set_state!.((qn,), get_entities(qn), next_states)
+end
+
+"""
+    $(TYPEDSIGNATURES)
+"""
+function qn_step!(qn::QN)
+    if get_schedule(qn) == Asynchronous()
+        async_qn_step!(qn)
+    else
+        sync_qn_step!(qn)
+    end
+end
+
+"""
+    $(TYPEDSIGNATURES)
+"""
+function get_step_function(qn::QN)
+    return get_schedule(qn) == Asynchronous() ? async_qn_step! : sync_qn_step!
 end
 
 extract_state(model::QN) = model.state
