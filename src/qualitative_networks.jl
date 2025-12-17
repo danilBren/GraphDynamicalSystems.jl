@@ -219,16 +219,15 @@ struct EntityId <: EntityLabel
 end
 id(e::EntityId) = e.id
 
-struct EntityName{S} <: EntityLabel
-    name::S
+struct EntityName <: EntityLabel
+    name::Symbol
 end
 name(e::EntityName) = e.name
 
 Base.:(==)(A::EntityName, B::EntityName) = A.name == B.name
 Base.isless(A::EntityName, B::EntityName) = A.name < B.name
-convert(::Type{EntityName{Symbol}}, S::Symbol) = EntityName(S)
-convert(::Type{Symbol}, S::EntityName{Symbol}) = S.name
-Base.show(io::IO, E::EntityName{Symbol}) = print(io, E.name)
+convert(::Type{EntityName}, S::Symbol) = EntityName(S)
+Base.show(io::IO, E::EntityName) = print(io, E.name)
 @auto_hash_equals struct EntityIdName{S} <: EntityLabel
     id::Int
     name::S
@@ -519,7 +518,7 @@ end
 
 Interpret target functions from a [`QualitativeNetwork`](@ref).
 """
-function interpret(e::Union{Expr,EntityName{Symbol}, Symbol,Int}, qn::QN, target)
+function interpret(e::Union{Expr,EntityName, Symbol,Int}, qn::QN, target)
     function scale_with_domain(source::EntityName, target::Union{EntityName, Entity}, val::Integer)
         (source_min, source_max) = extrema(get_domain(qn, source))
         (target_min, target_max) = extrema(get_domain(qn, target))
@@ -535,7 +534,7 @@ function interpret(e::Union{Expr,EntityName{Symbol}, Symbol,Int}, qn::QN, target
     end
     @match e begin
         ::Symbol => scale_with_domain(EntityName(e), target, get_state(qn, EntityName(e)))
-        ::EntityName{Symbol} => scale_with_domain(e, target, get_state(qn, e))
+        ::EntityName => scale_with_domain(e, target, get_state(qn, e))
         ::Int => e
         :($v1 + $v2) => interpret(v1, qn, target) + interpret(v2, qn, target)
         :($v1 - $v2) => interpret(v1, qn, target) - interpret(v2, qn, target)
@@ -684,11 +683,11 @@ Given a functoin, classify entities in the function into activators and inhibito
 function classify_activators_inhibitors(
     ex,
     sign::Int = 1,
-    activators::AbstractVector = EntityName{Symbol}[],
-    inhibitors::AbstractVector = EntityName{Symbol}[],
+    activators::AbstractVector = EntityName[],
+    inhibitors::AbstractVector = EntityName[],
 )
     (activators, inhibitors) = @match ex begin
-        ::EntityName{Symbol} => if sign == 1
+        ::EntityName => if sign == 1
             (push!(activators, ex), inhibitors)
         else
             (activators, push!(inhibitors, ex))
