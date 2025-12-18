@@ -227,6 +227,7 @@ name(e::EntityName) = e.name
 Base.:(==)(A::EntityName, B::EntityName) = A.name == B.name
 Base.isless(A::EntityName, B::EntityName) = A.name < B.name
 convert(::Type{EntityName}, S::Symbol) = EntityName(S)
+convert(::Type{Symbol}, EN::EntityName) = EN.name
 Base.show(io::IO, E::EntityName) = print(io, E.name)
 @auto_hash_equals struct EntityIdName{S} <: EntityLabel
     id::Int
