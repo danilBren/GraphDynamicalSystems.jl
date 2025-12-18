@@ -544,8 +544,8 @@ function interpret(e::Union{Expr,EntityName, Symbol,Int}, qn::QN, target)
             r1, r2 = interpret(v1, qn, target), interpret(v2, qn, target)
             r1 < 0 && r2 < 0 ? 0 : r1*r2
         end
-        :(min($v1, $v2)) => min(interpret(v1, qn, taget), interpret(v2, qn, target))
-        :(max($v1, $v2)) => max(interpret(v1, qn, taget), interpret(v2, qn, target))
+        :(min($v1, $v2)) => min(interpret(v1, qn, target), interpret(v2, qn, target))
+        :(max($v1, $v2)) => max(interpret(v1, qn, target), interpret(v2, qn, target))
         :(ceil($v)) => ceil(interpret(v, qn, target))
         :(floor($v)) => floor(interpret(v, qn, target))
         _ => error("Unhandled Expr in `interpret`: $e")
