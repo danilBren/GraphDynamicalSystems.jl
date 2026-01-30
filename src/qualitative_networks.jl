@@ -529,7 +529,6 @@ end
 Interpret target functions from a [`QualitativeNetwork`](@ref).
 """
 function interpret(e::Union{Expr,EntityName, Symbol,Int}, qn::QN, target)
-    @info "expresion $e"
     function scale_with_domain(source::EntityName, target::Union{EntityName, Entity}, val::Integer)
         (source_min, source_max) = extrema(get_domain(qn, source))
         (target_min, target_max) = extrema(get_domain(qn, target))
