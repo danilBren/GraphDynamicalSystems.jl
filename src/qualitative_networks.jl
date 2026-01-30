@@ -429,6 +429,15 @@ end
 """
     $(TYPEDSIGNATURES)
 
+wrapper for symbols
+"""
+function get_domain(qn::QN, entity_label::Symbol)
+    return get_domain(qn, EntityName(entity_label))
+end
+
+"""
+    $(TYPEDSIGNATURES)
+
 Get the domain of the entity `entity_label` in `qn`.
 """
 function get_domain(qn::QN, entity_label::EntityName)
@@ -679,7 +688,7 @@ end
 """
     $(TYPEDSIGNATURES)
 
-Given a functoin, classify entities in the function into activators and inhibitors.
+Given a function, classify entities in the function into activators and inhibitors.
 """
 function classify_activators_inhibitors(
     ex,
