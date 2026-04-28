@@ -29,7 +29,7 @@ function.
 
 ```jldoctest
 julia> default_target_function(0, 4, [:A, :B, :C], [:D, :E, :F])
-:(max(0, (A + B + C) / 3 - (D + E + F) / 3))
+:(max(0, ((A + B) + C) / 3 - ((D + E) + F) / 3))
 ```
 
 """
@@ -44,7 +44,8 @@ function default_target_function(
     elseif length(x) == 1
         :($(only(x)))
     elseif length(x) > 1
-        :($(Expr(:call, :+, x...)) / $(length(x)))
+        sum_expr = foldl((left, right) -> :($left + $right), x)
+        :($sum_expr / $(length(x)))
     end
 
     expr_activators = sum_only_or_nothing(activators)
