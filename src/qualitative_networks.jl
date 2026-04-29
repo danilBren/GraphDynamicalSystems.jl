@@ -189,7 +189,7 @@ end
 A qualitative network model as described in ["Qualitative networks: a symbolic approach to
 analyze biological signaling networks"](https://doi.org/10.1186/1752-0509-1-4).
 
-This implementation encompasses both the synchronous and asynchonous cases. In the paper, it
+This implementation encompasses both the synchronous and asynchronous cases. In the paper, it
 is assumed that the synchronous case is used. As such, the default constructor uses a
 synchronous schedule.
 
@@ -237,7 +237,7 @@ function QualitativeNetwork(
 end
 
 QualitativeNetwork(entities::AbstractVector{<:AbstractString}, args...; kwargs...) =
-    QualitativeNetwork(EntityName.(Symbol.(entities)), args...; kwargs...)
+    QualitativeNetwork(Entity.(Symbol.(entities)), args...; kwargs...)
 
 """
     $(TYPEDSIGNATURES)
@@ -362,7 +362,7 @@ function interpret(e::Union{Expr,EntityName, Symbol,Int}, qn::QN, target)
         (source_min, source_max) = extrema(get_domain(qn, source))
         (target_min, target_max) = extrema(get_domain(qn, target))
         if (source_max == source_min)
-            return source_mi
+            return source_min
         else
             return(Integer(round(
                 (val - source_min)*(
@@ -394,7 +394,7 @@ end
 """
     $(TYPEDSIGNATURES)
 
-Returns the limited value of `next_value` which is at most 1 different than `prev_value`.
+Returns the limited value of `next_value` which is at most 1 different from `prev_value`.
 
 It is also never negative, or larger than `N`.
 """
@@ -418,7 +418,7 @@ end
 """
     $(TYPEDSIGNATURES)
 
-Returns the limited value of `next_value` which is at most 1 different than `prev_value`.
+Returns the limited value of `next_value` which is at most 1 different from `prev_value`.
 
 It is also never negative, or larger than `N`.
 """
@@ -497,8 +497,8 @@ end
 """
     $(TYPEDSIGNATURES)
 
-Construct an asynchronous [`QualitativeNetwork`](@ref) system using the
-[`async_qn_step!`](@ref) as a step function.
+Construct a [`QualitativeNetwork`](@ref) system, using [`async_qn_step!`](@ref)
+or [`sync_qn_step!`](@ref) as the step function depending on the schedule of `qn`.
 """
 function create_qn_system(qn::QN)
     step_fn = get_schedule(qn) == Asynchronous() ? async_qn_step! : sync_qn_step!
