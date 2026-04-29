@@ -386,6 +386,10 @@ function interpret(e::Union{Expr,EntityName, Symbol,Int}, qn::QN, target)
         :(max($v1, $v2)) => max(interpret(v1, qn, target), interpret(v2, qn, target))
         :(ceil($v)) => ceil(interpret(v, qn, target))
         :(floor($v)) => floor(interpret(v, qn, target))
+        Expr(:call, :avg, args...) => begin
+            vals = [interpret(a, qn, target) for a in args]
+            sum(vals) / length(vals)
+        end
         _ => error("Unhandled Expr in `interpret`: $e")
     end
 end
